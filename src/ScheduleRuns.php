@@ -3,18 +3,12 @@
 namespace ScheduleKetchup;
 
 use DateTimeInterface;
-use Illuminate\Database\ConnectionInterface;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Str;
 
 class ScheduleRuns
 {
-    public function __construct(
-        protected ConnectionInterface $connection,
-        protected string $table = 'schedule_runs',
-    ) {}
-
     /**
      * When the named task last started. A task that has never run is measured
      * from the earliest recorded run of anything; null if nothing is recorded.
@@ -49,6 +43,6 @@ class ScheduleRuns
 
     protected function query(): Builder
     {
-        return $this->connection->table($this->table);
+        return ScheduleRun::query()->toBase();
     }
 }

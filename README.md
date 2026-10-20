@@ -93,6 +93,24 @@ command's process.
 
 Recording errors are reported and don't stop tasks from running.
 
+The `ScheduleKetchup\ScheduleRun` Eloquent model can be used to query runs.
+
+### Pruning
+
+`schedule-runs:prune` deletes runs older than `schedule-ketchup.prune_after_days`
+(default 90, or `SCHEDULE_RUNS_PRUNE_AFTER_DAYS`). It runs `model:prune` for
+the `ScheduleRun` model, which `model:prune` alone doesn't find because it only
+scans `app/Models`. Schedule it yourself:
+
+```php
+Schedule::command('schedule-runs:prune')->daily()->catchUp();
+```
+
+A task whose runs have all been pruned is measured from the earliest remaining
+row, which is later than any scheduled time it missed, so pruning doesn't make
+it run again. Publish the config with
+`php artisan vendor:publish --tag=schedule-ketchup-config`.
+
 ## Notes
 
 - `CatchUpSchedule::isDue()` mirrors the maintenance-mode and environment
