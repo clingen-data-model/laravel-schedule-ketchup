@@ -1,0 +1,43 @@
+{
+    "name": "clingen-data-model/laravel-schedule-ketchup",
+    "description": "Run Laravel scheduled tasks whose scheduled time has passed since they last ran, for apps that invoke schedule:run infrequently.",
+    "type": "library",
+    "license": "MIT",
+    "keywords": ["laravel", "schedule", "scheduler", "cron", "catch-up"],
+    "require": {
+        "php": "^8.2",
+        "dragonmantank/cron-expression": "^3.3",
+        "illuminate/console": "^12.0|^13.0",
+        "illuminate/database": "^12.0|^13.0",
+        "illuminate/support": "^12.0|^13.0"
+    },
+    "require-dev": {
+        "orchestra/testbench": "^10.0|^11.0",
+        "phpunit/phpunit": "^11.0|^12.0"
+    },
+    "autoload": {
+        "psr-4": {
+            "ScheduleKetchup\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "ScheduleKetchup\\Tests\\": "tests/"
+        }
+    },
+    "extra": {
+        "laravel": {
+            "providers": [
+                "ScheduleKetchup\\CatchUpServiceProvider"
+            ]
+        }
+    },
+    "scripts": {
+        "test": "phpunit"
+    },
+    "config": {
+        "sort-packages": true
+    },
+    "minimum-stability": "stable",
+    "prefer-stable": true
+}
