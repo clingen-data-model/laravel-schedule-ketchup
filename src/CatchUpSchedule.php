@@ -2,13 +2,13 @@
 
 namespace ScheduleKetchup;
 
-use ScheduleKetchup\Contracts\RunRepository;
 use Cron\CronExpression;
 use DateTimeZone;
 use Illuminate\Console\Scheduling\Event;
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Date;
+use LogicException;
 use ReflectionClass;
 
 /**
@@ -40,8 +40,11 @@ class CatchUpSchedule extends Schedule
 
     protected function isDue(Event $event, $app): bool
     {
-        $name = CatchUp::nameFor($event);
-        $lastStarted = $name === null ? null : $app->make(RunRepository::class)->lastStartedAt($name);
+        $lastStarted = CatchUp::enabled($event)
+            ? $app->make(ScheduleRuns::class)->lastStartedAt(
+                CatchUp::nameFor($event) ?? throw new LogicException('A scheduled callback using catchUp() needs a name or description.')
+            )
+            : null;
 
         if ($lastStarted === null) {
             return $event->isDue($app);

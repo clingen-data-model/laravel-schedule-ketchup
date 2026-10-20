@@ -9,6 +9,9 @@ With this package, events that opt in with `->catchUp()` are due whenever their
 most recent scheduled time is later than their last recorded start. A task that
 missed several slots runs once, not once per slot.
 
+Every scheduled task run is recorded in a `schedule_runs` table with its wall
+time, CPU and peak memory, which is also useful for sizing scheduler resources.
+
 ## Installation
 
 ```sh
@@ -30,51 +33,65 @@ Schedule::call(fn () => Report::send())->weekly()->name('weekly-report')->catchU
 Schedule::job(new PruneUploads)->daily()->catchUp('prune-uploads');
 ```
 
-Events without `->catchUp()` keep Laravel's exact-minute behaviour.
+Events without `->catchUp()` keep Laravel's exact-minute behaviour. Their runs
+are still recorded.
 
 ### Run names
 
-Starts are recorded per name:
+Runs are recorded, and catch-up looks them up, by name:
 
 - an explicit name: `->catchUp('name')`;
 - otherwise, for Artisan commands, the command name (arguments ignored);
 - otherwise the event's description (`->name(...)` / `->description(...)`);
 - otherwise its shell command (`exec()` events).
 
-A callback or job with no name or description throws a `LogicException`.
+A catch-up callback with no name or description throws a `LogicException`.
 
-Two events with the same name share one record. For example,
+Two events with the same name share their runs. For example,
 `command('report daily')` and `command('report weekly')` are both `report`;
 give them explicit names if they should catch up independently.
 
-### What counts as a run
+### When a catch-up event is due
 
-- Every scheduled start of a catch-up event (`ScheduledTaskStarting`).
-- Every start of an Artisan command whose name matches a catch-up event,
-  including manual runs and nested `Artisan::call()`, so a task run by hand is
-  not repeated at the next `schedule:run`.
+An event is due if its most recent scheduled time is later than the latest
+`started_at` recorded under its name. Runs count from when they start, whether
+or not they succeed, so a failing task is not retried at every `schedule:run`.
 
-Starts are recorded whether or not the run succeeds, so a failing task is not
-retried every time `schedule:run` is invoked.
+An event that has never run is measured from the earliest row in
+`schedule_runs`, so a new event runs at the first `schedule:run` after one of
+its scheduled times has passed. With no rows at all, it uses exact-minute
+matching.
 
-### New events
+## Run records
 
-The first time a catch-up event is checked, the package starts tracking it and
-uses exact-minute matching for that check. After that, it is due at its first
-scheduled time after tracking began.
+A row is inserted when a run starts, so in-progress and crashed runs are
+visible, and its usage columns are filled in when it finishes.
 
-## Custom run storage
+| Run | Recorded by | Usage |
+| --- | --- | --- |
+| Scheduled Artisan command | Its own process, on the row `schedule:run` created for it | Everything |
+| Manual run of a scheduled Artisan command (`scheduled` = false) | Its own process | Everything |
+| `schedule:run` itself (`scheduled` = false) | Its own process | Everything |
+| `call()` / `job()` | `schedule:run` | Wall, CPU and PHP peak memory while the task ran, including any subprocesses' CPU |
+| `exec()` in the foreground | `schedule:run` | Wall and the subprocess's CPU |
+| `exec()` in the background | `schedule:run` | Start only |
 
-Runs are stored in the `schedule_catchup_runs` table. To use run records the
-application already keeps, bind your own `ScheduleKetchup\Contracts\RunRepository`:
+Columns:
 
-```php
-$this->app->singleton(RunRepository::class, MyRunRepository::class);
-```
+- `name`, `command`, `scheduled`, `host`, `started_at`, `exit_code`
+- `wall_seconds`
+- `cpu_user_seconds`, `cpu_system_seconds`: the run's process
+- `max_rss_kb`: the run's process
+- `php_peak_bytes`: `memory_get_peak_usage(true)`
+- `children_cpu_seconds`, `children_max_rss_kb`: subprocesses the run waited for
 
-`lastStartedAt()` returning `null` makes the event fall back to exact-minute
-matching. `recordStart()` may be a no-op if the application records starts
-itself.
+Nested `Artisan::call()` commands are counted as part of the outer command.
+
+`schedule:run` passes each Artisan task its row ID through Laravel's
+[context](https://laravel.com/docs/context), which the scheduler hands to the
+command's process.
+
+Recording errors are reported and don't stop tasks from running.
 
 ## Notes
 
@@ -83,6 +100,8 @@ itself.
 - Filters (`when()`, `skip()`), overlap prevention and `onOneServer()` still
   apply as usual.
 - Sub-minute (`everyTenSeconds()` etc.) events shouldn't use `catchUp()`.
+- A `job()` event's run measures dispatching the job, not running it, unless
+  the job runs synchronously.
 
 ## Development
 
