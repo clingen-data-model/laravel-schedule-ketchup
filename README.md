@@ -122,12 +122,11 @@ An event is due if its most recent scheduled time is later than the latest
 `started_at` recorded under its name. An in-progress, crashed or failed run
 counts as a start, so a failure is not retried at every `schedule:run`.
 
-An event that has never run is eligible for scheduled times in or after the
-minute of the earliest row in `schedule_runs`. This includes a task due during
-the first invocation, even though `schedule:run` records its heartbeat before
-checking tasks. Earlier slots are not recovered: installing the package at
-02:00 does not immediately run a daily 01:15 task. With no rows at all, it uses
-exact-minute matching.
+An event that has never run is eligible for scheduled times after the earliest
+row in `schedule_runs`. On the very first invocation, that row is the
+`schedule:run` heartbeat itself, so tasks due in that minute also run. Earlier
+slots are not recovered: installing the package at 02:00 does not immediately
+run a daily 01:15 task. With no rows at all, it uses exact-minute matching.
 
 Filters (`when()`, `skip()`), maintenance-mode and environment restrictions,
 overlap prevention and `onOneServer()` still apply. Event timezones are used
@@ -229,10 +228,10 @@ Schedule::command('schedule-runs:prune')->daily()->catchUp();
 ```
 
 Retention affects catch-up as well as storage. Once all runs for a task have
-been pruned, the task is treated as never run and uses the minute of the
-earliest remaining row as its baseline. Missed slots before that minute are no
-longer eligible. Choose retention to cover the history you need to recover,
-especially for infrequent tasks or long scheduler outages.
+been pruned, the task is treated as never run and uses the earliest remaining
+row as its baseline. Missed slots before that row are no longer eligible.
+Choose retention to cover the history you need to recover, especially for
+infrequent tasks or long scheduler outages.
 
 For example, if an annual task missed January 1 but its last run and all history
 from January have been pruned, a scheduler invocation in October will not

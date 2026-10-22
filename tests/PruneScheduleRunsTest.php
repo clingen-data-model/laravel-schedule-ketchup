@@ -2,6 +2,7 @@
 
 namespace ScheduleKetchup\Tests;
 
+use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\DB;
 use PHPUnit\Framework\Attributes\Test;
 
@@ -19,5 +20,22 @@ class PruneScheduleRunsTest extends TestCase
 
         $this->artisan('schedule-runs:prune')->assertSuccessful();
         $this->assertSame(['recent'], DB::table('schedule_runs')->pluck('name')->all());
+    }
+
+    #[Test]
+    public function a_pruned_task_does_not_rerun_its_last_slot()
+    {
+        config(['schedule-ketchup.prune_after_days' => 90]);
+        $yearly = $this->schedule()->call(fn () => null)->yearly()->name('yearly')->catchUp();
+        $this->recordRun('schedule:run', '2026-01-01 00:00:00');
+        $this->recordRun('yearly', '2026-01-01 00:00:01');
+        $this->recordRun('other', '2026-01-01 00:00:02');
+
+        // Prune when the cutoff falls inside the slot's minute, after the task's own run.
+        Date::setTestNow('2026-04-01 00:00:02');
+        $this->artisan('schedule-runs:prune')->assertSuccessful();
+        Date::setTestNow('2026-10-19 03:30:00');
+
+        $this->assertFalse($this->schedule()->dueEvents($this->app)->contains($yearly));
     }
 }

@@ -11,8 +11,7 @@ class ScheduleRuns
 {
     /**
      * When the named task last started. A task that has never run is measured
-     * from just before the minute of the earliest recorded run of anything;
-     * null if nothing is recorded.
+     * from the earliest recorded run of anything; null if nothing is recorded.
      */
     public function lastStartedAt(string $name): ?DateTimeInterface
     {
@@ -24,9 +23,17 @@ class ScheduleRuns
 
         $earliest = $this->query()->min('started_at');
 
-        // Include the first recorded minute: schedule:run writes its heartbeat
-        // before checking due events, including on the very first invocation.
-        return $earliest === null ? null : Date::parse($earliest)->startOfMinute()->subSecond();
+        if ($earliest === null) {
+            return null;
+        }
+
+        $earliest = Date::parse($earliest);
+
+        // On the first invocation, schedule:run's heartbeat is recorded before
+        // due events are checked; include its minute so tasks due then still
+        // run. Only then: an older earliest row may share its minute with a
+        // pruned run.
+        return $earliest->isSameMinute(Date::now()) ? $earliest->startOfMinute()->subSecond() : $earliest;
     }
 
     /**
