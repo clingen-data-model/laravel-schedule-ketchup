@@ -9,6 +9,7 @@ use Illuminate\Console\Events\ScheduledTaskFinished;
 use Illuminate\Console\Events\ScheduledTaskStarting;
 use Illuminate\Support\Facades\Context;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Date;
 use PHPUnit\Framework\Attributes\Test;
 use RuntimeException;
 use Symfony\Component\Console\Input\ArrayInput;
@@ -118,6 +119,41 @@ class RecordScheduleRunsTest extends TestCase
         }
 
         $this->assertSame([['inspire', 0], ['schedule:run', 0]], array_map(fn ($run) => [$run['name'], $run['scheduled']], $this->runs()));
+    }
+
+    #[Test]
+    public function first_heartbeat_allows_a_currently_due_task_to_run_once()
+    {
+        Date::setTestNow('2026-10-19 01:00:20');
+        $calls = 0;
+        $this->schedule()->call(function () use (&$calls) { $calls++; })
+            ->dailyAt('01:00')->name('first')->catchUp();
+
+        // Testbench disables the real console command events, so emit the
+        // heartbeat event that precedes schedule:run in a normal invocation.
+        $this->startCommand('schedule:run');
+        $this->artisan('schedule:run')->assertSuccessful();
+        $this->finishCommand('schedule:run');
+        $this->assertSame(1, $calls);
+
+        $this->startCommand('schedule:run');
+        $this->artisan('schedule:run')->assertSuccessful();
+        $this->finishCommand('schedule:run');
+        $this->assertSame(1, $calls);
+    }
+
+    #[Test]
+    public function first_heartbeat_does_not_replay_earlier_minutes()
+    {
+        $calls = 0;
+        $this->schedule()->call(function () use (&$calls) { $calls++; })
+            ->dailyAt('01:00')->name('first')->catchUp();
+
+        $this->startCommand('schedule:run');
+        $this->artisan('schedule:run')->assertSuccessful();
+        $this->finishCommand('schedule:run');
+
+        $this->assertSame(0, $calls);
     }
 
     #[Test]

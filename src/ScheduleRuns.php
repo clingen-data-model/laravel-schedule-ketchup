@@ -11,13 +11,22 @@ class ScheduleRuns
 {
     /**
      * When the named task last started. A task that has never run is measured
-     * from the earliest recorded run of anything; null if nothing is recorded.
+     * from just before the minute of the earliest recorded run of anything;
+     * null if nothing is recorded.
      */
     public function lastStartedAt(string $name): ?DateTimeInterface
     {
-        $startedAt = $this->query()->where('name', $name)->max('started_at') ?? $this->query()->min('started_at');
+        $startedAt = $this->query()->where('name', $this->storedName($name))->max('started_at');
 
-        return $startedAt === null ? null : Date::parse($startedAt);
+        if ($startedAt !== null) {
+            return Date::parse($startedAt);
+        }
+
+        $earliest = $this->query()->min('started_at');
+
+        // Include the first recorded minute: schedule:run writes its heartbeat
+        // before checking due events, including on the very first invocation.
+        return $earliest === null ? null : Date::parse($earliest)->startOfMinute()->subSecond();
     }
 
     /**
@@ -27,7 +36,7 @@ class ScheduleRuns
     public function start(string $name, ?string $command, bool $scheduled): int
     {
         return $this->query()->insertGetId([
-            'name' => Str::limit($name, 255, ''),
+            'name' => $this->storedName($name),
             'command' => $command === null ? null : Str::limit($command, 1000, ''),
             'scheduled' => $scheduled,
             'host' => Str::limit((string) gethostname(), 255, ''),
@@ -39,6 +48,13 @@ class ScheduleRuns
     public function finish(int $id, array $usage): void
     {
         $this->query()->where('id', $id)->update($usage);
+    }
+
+    private function storedName(string $name): string
+    {
+        return Str::length($name) <= 255
+            ? $name
+            : Str::substr($name, 0, 190).'#'.hash('sha256', $name);
     }
 
     protected function query(): Builder

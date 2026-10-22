@@ -51,16 +51,20 @@ Two events with the same name share their runs. For example,
 `command('report daily')` and `command('report weekly')` are both `report`;
 give them explicit names if they should catch up independently.
 
+Names longer than 255 characters are stored as a shortened prefix plus a hash
+of the full name. Catch-up uses the same representation, so long names with a
+shared prefix keep separate histories.
+
 ### When a catch-up event is due
 
 An event is due if its most recent scheduled time is later than the latest
 `started_at` recorded under its name. Runs count from when they start, whether
 or not they succeed, so a failing task is not retried at every `schedule:run`.
 
-An event that has never run is measured from the earliest row in
-`schedule_runs`, so a new event runs at the first `schedule:run` after one of
-its scheduled times has passed. With no rows at all, it uses exact-minute
-matching.
+An event that has never run is eligible for scheduled times in or after the
+minute of the earliest row in `schedule_runs`. This includes a task due during
+the first invocation, even though `schedule:run` records its heartbeat before
+checking tasks. With no rows at all, it uses exact-minute matching.
 
 ## Run records
 
@@ -92,6 +96,9 @@ Nested `Artisan::call()` commands are counted as part of the outer command.
 command's process.
 
 Recording errors are reported and don't stop tasks from running.
+If run history cannot be read, catch-up events fall back to Laravel's
+exact-minute matching until history is available again. Environment and
+maintenance-mode checks still apply.
 
 The `ScheduleKetchup\ScheduleRun` Eloquent model can be used to query runs.
 

@@ -10,6 +10,7 @@ use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Date;
 use LogicException;
 use ReflectionClass;
+use Throwable;
 
 /**
  * A schedule on which opted-in events are due when their most recent scheduled
@@ -40,11 +41,20 @@ class CatchUpSchedule extends Schedule
 
     protected function isDue(Event $event, $app): bool
     {
-        $lastStarted = CatchUp::enabled($event)
-            ? $app->make(ScheduleRuns::class)->lastStartedAt(
-                CatchUp::nameFor($event) ?? throw new LogicException('A scheduled callback using catchUp() needs a name or description.')
-            )
-            : null;
+        if (! CatchUp::enabled($event)) {
+            return $event->isDue($app);
+        }
+
+        $name = CatchUp::nameFor($event)
+            ?? throw new LogicException('A scheduled callback using catchUp() needs a name or description.');
+
+        try {
+            $lastStarted = $app->make(ScheduleRuns::class)->lastStartedAt($name);
+        } catch (Throwable $e) {
+            report($e);
+
+            return $event->isDue($app);
+        }
 
         if ($lastStarted === null) {
             return $event->isDue($app);

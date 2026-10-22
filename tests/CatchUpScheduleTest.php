@@ -4,7 +4,10 @@ namespace ScheduleKetchup\Tests;
 
 use Illuminate\Console\Scheduling\Event;
 use Illuminate\Console\Scheduling\Schedule;
+use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\Date;
+use Illuminate\Support\Facades\Exceptions;
+use Illuminate\Support\Facades\Schema;
 use LogicException;
 use PHPUnit\Framework\Attributes\Test;
 use ScheduleKetchup\CatchUp;
@@ -86,6 +89,31 @@ class CatchUpScheduleTest extends TestCase
 
         Date::setTestNow('2026-10-20 01:00:00');
         $this->assertTrue($this->isDue($event));
+    }
+
+    #[Test]
+    public function history_read_errors_are_reported_and_fall_back_to_exact_minute_checks()
+    {
+        Exceptions::fake();
+        Schema::drop('schedule_runs');
+        $due = $this->schedule()->call(fn () => null)->everyMinute()->name('due')->catchUp();
+        $missed = $this->schedule()->call(fn () => null)->dailyAt('01:00')->name('missed')->catchUp();
+        $ordinary = $this->schedule()->call(fn () => null)->everyMinute();
+        $restricted = $this->schedule()->call(fn () => null)->everyMinute()->name('restricted')->catchUp()->environments('production');
+
+        $events = $this->schedule()->dueEvents($this->app);
+
+        $this->assertTrue($events->contains($due));
+        $this->assertFalse($events->contains($missed));
+        $this->assertTrue($events->contains($ordinary));
+        $this->assertFalse($events->contains($restricted));
+        Exceptions::assertReported(QueryException::class);
+
+        $this->app->maintenanceMode()->activate([]);
+        $this->beforeApplicationDestroyed(fn () => $this->app->maintenanceMode()->deactivate());
+        $this->assertFalse($this->isDue($due));
+        $due->evenInMaintenanceMode();
+        $this->assertTrue($this->isDue($due));
     }
 
     #[Test]
